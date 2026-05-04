@@ -81,6 +81,10 @@ class RepoSyncWindow(QMainWindow):
         btn_download_all = QPushButton("批量下载")
         btn_download_all.clicked.connect(self.download_all)
         owner_line.addWidget(btn_download_all)
+
+        btn_restart = QPushButton("重启")
+        btn_restart.clicked.connect(self.restart_self)
+        owner_line.addWidget(btn_restart)
         main_layout.addLayout(owner_line)
 
         self.list_area = QScrollArea()
@@ -370,6 +374,15 @@ class RepoSyncWindow(QMainWindow):
             return
         for _, pkg_dir in self._package_entries():
             self.download_one(pkg_dir)
+
+    def restart_self(self):
+        try:
+            subprocess.Popen([sys.executable, *sys.argv])
+            self._log("[ok] 正在重启 repo_sync_gui ...")
+            QApplication.quit()
+        except Exception as exc:
+            self._log(f"[ERR] 重启失败: {exc}")
+            QMessageBox.warning(self, "重启失败", str(exc))
 
 
 def main():
