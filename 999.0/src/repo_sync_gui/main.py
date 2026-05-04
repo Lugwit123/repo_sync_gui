@@ -136,8 +136,8 @@ class RepoSyncWindow(QMainWindow):
             return False
         return True
 
-    def _package_dirs(self) -> list[Path]:
-        out = []
+    def _package_entries(self) -> list[tuple[str, Path]]:
+        out: list[tuple[str, Path]] = []
         for item in sorted(self.rez_source.iterdir(), key=lambda p: p.name.lower()):
             if not item.is_dir():
                 continue
@@ -145,7 +145,12 @@ class RepoSyncWindow(QMainWindow):
                 continue
             if not list(item.glob("*/package.py")):
                 continue
-            out.append(item)
+            out.append((item.name, item))
+
+        # 与 repo_tools/batch_push_github.bat 一致：额外处理 trayapp/wuwo 仓库。
+        wuwo_dir = self.rez_source.parent / "wuwo"
+        if wuwo_dir.is_dir():
+            out.append(("wuwo", wuwo_dir))
         return out
 
     def refresh_packages(self):
@@ -156,12 +161,12 @@ class RepoSyncWindow(QMainWindow):
                 w.deleteLater()
         self.row_buttons = []
 
-        for pkg_dir in self._package_dirs():
+        for pkg_name, pkg_dir in self._package_entries():
             row = QWidget()
             row_lay = QHBoxLayout(row)
             row_lay.setContentsMargins(4, 4, 4, 4)
 
-            label = QLabel(pkg_dir.name)
+            label = QLabel(pkg_name)
             label.setMinimumWidth(220)
             row_lay.addWidget(label)
 
@@ -357,13 +362,13 @@ class RepoSyncWindow(QMainWindow):
     def upload_all(self):
         if not self._check_tools():
             return
-        for pkg_dir in self._package_dirs():
+        for _, pkg_dir in self._package_entries():
             self.upload_one(pkg_dir)
 
     def download_all(self):
         if not self._check_tools():
             return
-        for pkg_dir in self._package_dirs():
+        for _, pkg_dir in self._package_entries():
             self.download_one(pkg_dir)
 
 
