@@ -220,6 +220,40 @@ class RepoSyncWindow(QMainWindow):
         branch = (msg or "").strip().splitlines()[-1] if ok and msg.strip() else "main"
         return branch or "main"
 
+    def _confirm_action(self, title: str, pkg_name: str, lines: list[str], fallback: str) -> bool:
+        preview = [x for x in lines if x.strip()]
+        if not preview:
+            preview = [fallback]
+        limit = 120
+        if len(preview) > limit:
+            preview = preview[:limit] + [f"...(共 {len(lines)} 条，仅显示前 {limit} 条)"]
+        text = f"{pkg_name} 将执行以下文件操作：\n\n" + "\n".join(preview)
+        ans = QMessageBox.question(self, title, text, QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        return ans == QMessageBox.Yes
+
+    def _preview_upload_files(self, pkg_dir: Path) -> list[str]:
+        ok, msg = self._run(["git", "status", "--porcelain"], cwd=pkg_dir)
+        if not ok:
+            return [f"[无法预览] {msg}"]
+        lines = [line for line in (msg or "").splitlines() if line.strip()]
+        return lines
+
+    def _preview_download_files(self, pkg_dir: Path) -> list[str]:
+        self._run(["git", "fetch", "--all", "--prune"], cwd=pkg_dir)
+        ok_up, upstream = self._run(
+            ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], cwd=pkg_dir
+        )
+        if not ok_up or not upstream.strip():
+            return ["[无上游分支] 将尝试 git pull --ff-only"]
+        upstream_ref = upstream.strip().splitlines()[-1]
+        ok_diff, msg_diff = self._run(
+            ["git", "diff", "--name-status", f"HEAD..{upstream_ref}"], cwd=pkg_dir
+        )
+        if not ok_diff:
+            return [f"[无法预览] {msg_diff}"]
+        lines = [line for line in (msg_diff or "").splitlines() if line.strip()]
+        return lines
+
     def upload_one(self, pkg_dir: Path):
         owner = self.owner_edit.text().strip() or "Lugwit123"
         pkg_name = pkg_dir.name
@@ -233,6 +267,10 @@ class RepoSyncWindow(QMainWindow):
                 return
             self._ensure_gitignore(pkg_dir)
             self._ensure_remote(pkg_dir, pkg_name, owner)
+            upload_preview = self._preview_upload_files(pkg_dir)
+            if not self._confirm_action("确认上传", pkg_name, upload_preview, "无文件变化（可能仅推送远端分支状态）"):
+                self._log(f"[info] {pkg_name} 取消上传")
+                return
             branch = self._current_branch(pkg_dir)
 
             self._run(["git", "add", "-A"], cwd=pkg_dir)
@@ -303,6 +341,10 @@ class RepoSyncWindow(QMainWindow):
                 self._log(f"[ERR] {pkg_name} 目录存在但不是 git 仓库")
                 return
 
+            download_preview = self._preview_download_files(pkg_dir)
+            if not self._confirm_action("确认下载", pkg_name, download_preview, "无远端文件变化"):
+                self._log(f"[info] {pkg_name} 取消下载")
+                return
             ok_pull, msg_pull = self._run(["git", "pull", "--ff-only"], cwd=pkg_dir)
             if ok_pull:
                 self._log(f"[ok] {pkg_name} pulled")
